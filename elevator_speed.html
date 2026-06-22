@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0e1a">
+<title>엘리베이터 속도 측정기</title>
+<style>
+  :root{
+    --bg:#0a0e1a;
+    --panel:#121829;
+    --panel2:#0e1422;
+    --line:#1e2942;
+    --accent:#00e5ff;
+    --accent2:#00ff9d;
+    --warn:#ffb020;
+    --danger:#ff3b5c;
+    --txt:#e8eefc;
+    --txt-dim:#7d8aa8;
+    --mono:'SF Mono','JetBrains Mono','Roboto Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overscroll-behavior:none;}
+  body{
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',-apple-system,sans-serif;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,229,255,0.08), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 50% 110%, rgba(0,255,157,0.06), transparent 60%),
+      var(--bg);
+    color:var(--txt);
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:18px 16px 24px;
+    user-select:none;
+  }
+
+  /* 헤더 */
+  .top{width:100%;max-width:460px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .brand{display:flex;align-items:center;gap:9px;}
+  .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,229,255,0.3);}
+  .logo svg{width:20px;height:20px;}
+  .brand h1{font-size:15px;font-weight:800;letter-spacing:-0.3px;}
+  .brand p{font-size:10px;color:var(--txt-dim);font-weight:600;margin-top:1px;letter-spacing:0.2px;}
+  .status-dot{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--txt-dim);font-family:var(--mono);font-weight:600;background:var(--panel);padding:6px 10px;border-radius:20px;border:1px solid var(--line);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--txt-dim);transition:all .3s;}
+  .dot.live{background:var(--accent2);box-shadow:0 0 8px var(--accent2);animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  /* 메인 게이지 */
+  .gauge-wrap{width:100%;max-width:460px;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:26px;padding:26px 22px 22px;position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.4);}
+  .gauge-wrap::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 0%, rgba(0,229,255,0.06), transparent 50%);pointer-events:none;}
+
+  .phase-badge{position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:800;letter-spacing:1px;padding:5px 16px;border-radius:20px;background:rgba(125,138,168,0.12);color:var(--txt-dim);border:1px solid var(--line);transition:all .35s;white-space:nowrap;z-index:3;}
+  .phase-badge.up{background:rgba(0,255,157,0.14);color:var(--accent2);border-color:rgba(0,255,157,0.3);}
+  .phase-badge.down{background:rgba(255,176,32,0.14);color:var(--warn);border-color:rgba(255,176,32,0.3);}
+  .phase-badge.cruise{background:rgba(0,229,255,0.14);color:var(--accent);border-color:rgba(0,229,255,0.3);}
+
+  .dial{position:relative;width:260px;height:260px;margin:30px auto 8px;}
+  .dial svg{transform:rotate(-90deg);overflow:visible;}
+  .dial-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .speed-val{font-family:var(--mono);font-size:62px;font-weight:800;line-height:1;letter-spacing:-2px;background:linear-gradient(180deg,#fff,var(--accent));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-variant-numeric:tabular-nums;}
+  .speed-unit{font-size:13px;color:var(--txt-dim);font-weight:700;margin-top:6px;letter-spacing:0.5px;font-family:var(--mono);}
+  .speed-sub{font-size:11px;color:var(--txt-dim);margin-top:10px;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+
+  /* 통계 행 */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:13px 10px;text-align:center;}
+  .stat .label{font-size:10px;color:var(--txt-dim);font-weight:700;letter-spacing:0.3px;margin-bottom:6px;}
+  .stat .value{font-family:var(--mono);font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .stat .value small{font-size:11px;color:var(--txt-dim);font-weight:600;margin-left:2px;}
+  .stat.peak .value{color:var(--accent2);}
+  .stat.accel .value{color:var(--accent);}
+  .stat.dist .value{color:var(--warn);}
+
+  /* 컨트롤 */
+  .controls{width:100%;max-width:460px;display:flex;gap:10px;margin-top:16px;}
+  button{font-family:inherit;border:none;border-radius:16px;font-weight:800;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .btn-main{flex:1;padding:17px;font-size:16px;letter-spacing:0.3px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#04121a;box-shadow:0 8px 24px rgba(0,229,255,0.28);}
+  .btn-main:active{transform:scale(0.97);}
+  .btn-main.stop{background:linear-gradient(135deg,var(--danger),#ff6b85);color:#fff;box-shadow:0 8px 24px rgba(255,59,92,0.3);}
+  .btn-ghost{padding:17px 20px;font-size:14px;background:var(--panel);color:var(--txt-dim);border:1px solid var(--line);}
+  .btn-ghost:active{transform:scale(0.97);background:var(--panel2);}
+
+  /* 실시간 그래프 */
+  .graph-card{width:100%;max-width:460px;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:20px;padding:16px;margin-top:14px;}
+  .graph-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .graph-head h3{font-size:12px;font-weight:800;color:var(--txt);letter-spacing:0.2px;}
+  .graph-head .legend{display:flex;gap:12px;font-size:10px;color:var(--txt-dim);font-weight:600;}
+  .lg{display:flex;align-items:center;gap:4px;}
+  .lg i{width:10px;height:3px;border-radius:2px;display:inline-block;}
+  #graph{width:100%;height:120px;display:block;}
+
+  /* 기록 */
+  .records{width:100%;max-width:460px;margin-top:14px;}
+  .records-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 4px;}
+  .records-head h3{font-size:13px;font-weight:800;}
+  .records-head button{font-size:11px;color:var(--danger);background:none;padding:4px 8px;font-weight:700;}
+  .rec-list{display:flex;flex-direction:column;gap:8px;}
+  .rec-item{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px;display:flex;align-items:center;justify-content:space-between;animation:slideIn .3s ease;}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .rec-left .rt{font-size:11px;color:var(--txt-dim);font-family:var(--mono);margin-bottom:3px;}
+  .rec-left .rd{font-size:11px;color:var(--txt-dim);}
+  .rec-right{text-align:right;}
+  .rec-right .rs{font-family:var(--mono);font-size:20px;font-weight:800;color:var(--accent2);font-variant-numeric:tabular-nums;}
+  .rec-right .ru{font-size:10px;color:var(--txt-dim);font-weight:600;}
+  .empty{text-align:center;color:var(--txt-dim);font-size:12px;padding:24px;background:var(--panel);border:1px dashed var(--line);border-radius:14px;}
+
+  /* 권한 안내 모달 */
+  .overlay{position:fixed;inset:0;background:rgba(5,8,16,0.92);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:24px;z-index:100;}
+  .overlay.show{display:flex;}
+  .modal{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:22px;padding:28px 24px;max-width:380px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,0.6);}
+  .modal .ic{width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;margin:0 auto 18px;box-shadow:0 8px 24px rgba(0,229,255,0.3);}
+  .modal h2{font-size:18px;font-weight:800;margin-bottom:10px;}
+  .modal p{font-size:13px;color:var(--txt-dim);line-height:1.6;margin-bottom:20px;}
+  .modal button{width:100%;padding:15px;font-size:15px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#04121a;}
+
+  .hint{width:100%;max-width:460px;margin-top:16px;font-size:11px;color:var(--txt-dim);line-height:1.6;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+  .hint b{color:var(--accent);}
+
+  .footer{margin-top:18px;font-size:10px;color:var(--txt-dim);text-align:center;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" stroke="#04121a" stroke-width="2" stroke-linejoin="round"/><path d="M8 10l4-2.5L16 10M8 14l4 2.5 4-2.5" stroke="#04121a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div>
+      <h1>승강기 속도 측정기</h1>
+      <p>ELEVATOR SPEED METER</p>
+    </div>
+  </div>
+  <div class="status-dot">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">대기</span>
+  </div>
+</div>
+
+<div class="gauge-wrap">
+  <div class="phase-badge" id="phaseBadge">정지</div>
+  <div class="dial">
+    <svg width="260" height="260" viewBox="0 0 260 260">
+      <circle cx="130" cy="130" r="116" fill="none" stroke="#1e2942" stroke-width="14"/>
+      <circle id="arc" cx="130" cy="130" r="116" fill="none" stroke="url(#grad)" stroke-width="14"
+              stroke-linecap="round" stroke-dasharray="729" stroke-dashoffset="729"/>
+      <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00e5ff"/>
+          <stop offset="100%" stop-color="#00ff9d"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <div class="dial-center">
+      <div class="speed-val" id="speedVal">0</div>
+      <div class="speed-unit">m / min</div>
+      <div class="speed-sub" id="speedMs">0.00 m/s</div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat peak">
+      <div class="label">최고 속도</div>
+      <div class="value"><span id="peakVal">0</span><small>m/min</small></div>
+    </div>
+    <div class="stat accel">
+      <div class="label">현재 가속도</div>
+      <div class="value"><span id="accelVal">0.0</span><small>m/s²</small></div>
+    </div>
+    <div class="stat dist">
+      <div class="label">이동 거리</div>
+      <div class="value"><span id="distVal">0.0</span><small>m</small></div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn-main" id="startBtn">측정 시작</button>
+  <button class="btn-ghost" id="resetBtn">초기화</button>
+</div>
+
+<div class="graph-card">
+  <div class="graph-head">
+    <h3>실시간 속도 곡선</h3>
+    <div class="legend">
+      <span class="lg"><i style="background:#00e5ff"></i>속도</span>
+      <span class="lg"><i style="background:#ff3b5c"></i>가속도</span>
+    </div>
+  </div>
+  <canvas id="graph"></canvas>
+</div>
+
+<div class="records">
+  <div class="records-head">
+    <h3>측정 기록</h3>
+    <button id="clearRec">전체 삭제</button>
+  </div>
+  <div class="rec-list" id="recList">
+    <div class="empty">측정을 완료하면 기록이 여기에 저장됩니다</div>
+  </div>
+</div>
+
+<div class="hint">
+  탑승 직후 <b>측정 시작</b>을 누르고 폰을 가만히 드세요. 출발·정지를 자동 감지해 최고 속도를 기록합니다. 측정값은 기계실 정식 속도계 확인 전 <b>사전 참고용</b>입니다.
+</div>
+
+<div class="footer">
+  가속도 적분 방식 · 오차 ±5~15% · Galaxy S22+ 최적화<br>
+  © 한국승강기안전공단 현장 검사 보조도구
+</div>
+
+<!-- 권한 모달 -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="ic">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke="#04121a" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3" fill="#04121a"/></svg>
+    </div>
+    <h2>센서 권한이 필요합니다</h2>
+    <p>엘리베이터의 움직임을 감지하려면 기기의 모션 센서(가속도계) 접근 권한이 필요합니다. 데이터는 기기 밖으로 전송되지 않습니다.</p>
+    <button id="permBtn">센서 사용 허용</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════
+   엘리베이터 속도 측정 엔진
+   원리: 수직 가속도 → 중력제거 → 시간적분 → 속도
+═══════════════════════════════════════════ */
+
+const MAX_SPEED = 240;        // 게이지 최대 m/min (240 = 4m/s, 고속 엘베 대응)
+const ARC_LEN = 729;          // 2πr (r=116)
+const G = 9.80665;            // 중력가속도
+const ZUPT_THRESHOLD = 0.06;  // 정지판정 가속도 임계 (m/s²)
+const ZUPT_COUNT = 12;        // 연속 정지샘플 수 → 드리프트 리셋
+const MOVE_THRESHOLD = 0.12;  // 움직임 시작 판정
+
+let running = false;
+let velocity = 0;        // m/s (적분값)
+let distance = 0;        // m
+let peakSpeed = 0;       // m/min
+let lastTime = null;
+let gravity = 0;         // 저역통과로 추출한 중력 성분
+let gravityInit = false;
+let stillCount = 0;
+let moving = false;
+let graphData = [];      // {v, a}
+let curAccel = 0;
+
+const $ = id => document.getElementById(id);
+const arc = $('arc');
+const speedVal = $('speedVal');
+const speedMs = $('speedMs');
+const peakValEl = $('peakVal');
+const accelValEl = $('accelVal');
+const distValEl = $('distVal');
+const phaseBadge = $('phaseBadge');
+const startBtn = $('startBtn');
+const statusDot = $('statusDot');
+const statusText = $('statusText');
+
+/* ── 그래프 셋업 ── */
+const canvas = $('graph');
+const ctx = canvas.getContext('2d');
+function sizeCanvas(){
+  const dpr = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  canvas.width = r.width * dpr;
+  canvas.height = r.height * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+sizeCanvas();
+window.addEventListener('resize', sizeCanvas);
+
+function drawGraph(){
+  const w = canvas.getBoundingClientRect().width;
+  const h = canvas.getBoundingClientRect().height;
+  ctx.clearRect(0,0,w,h);
+
+  // 격자
+  ctx.strokeStyle = 'rgba(30,41,66,0.6)';
+  ctx.lineWidth = 1;
+  for(let i=0;i<=4;i++){
+    const y = (h/4)*i;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+  }
+
+  if(graphData.length < 2) return;
+  const n = graphData.length;
+  const maxShow = 150;
+  const data = graphData.slice(-maxShow);
+  const len = data.length;
+  const stepX = w / (maxShow - 1);
+
+  // 속도 곡선 (정규화: MAX_SPEED 기준)
+  ctx.beginPath();
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  data.forEach((d,i)=>{
+    const x = i*stepX;
+    const sp = Math.min(Math.abs(d.v)*60, MAX_SPEED);
+    const y = h - (sp/MAX_SPEED)*h*0.92 - 4;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // 속도 곡선 영역 채우기
+  ctx.lineTo((len-1)*stepX, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  const grd = ctx.createLinearGradient(0,0,0,h);
+  grd.addColorStop(0,'rgba(0,229,255,0.22)');
+  grd.addColorStop(1,'rgba(0,229,255,0)');
+  ctx.fillStyle = grd;
+  ctx.fill();
+
+  // 가속도 곡선 (중앙 0 기준)
+  ctx.beginPath();
+  ctx.strokeStyle = '#ff3b5c';
+  ctx.lineWidth = 1.5;
+  data.forEach((d,i)=>{
+    const x = i*stepX;
+    const a = Math.max(-2,Math.min(2,d.a));
+    const y = h/2 - (a/2)*(h*0.4);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+/* ── UI 업데이트 ── */
+function updateUI(){
+  const mmin = Math.abs(velocity)*60;
+  speedVal.textContent = Math.round(mmin);
+  speedMs.textContent = Math.abs(velocity).toFixed(2)+' m/s';
+  accelValEl.textContent = curAccel.toFixed(1);
+  distValEl.textContent = distance.toFixed(1);
+  peakValEl.textContent = Math.round(peakSpeed);
+
+  const ratio = Math.min(mmin/MAX_SPEED,1);
+  arc.style.strokeDashoffset = ARC_LEN*(1-ratio);
+
+  // 위상 배지
+  phaseBadge.className = 'phase-badge';
+  if(!moving){ phaseBadge.textContent='정지'; }
+  else if(velocity > 0.05 && curAccel > 0.15){ phaseBadge.textContent='▲ 상승 가속'; phaseBadge.classList.add('up'); }
+  else if(velocity < -0.05 && curAccel > 0.15){ phaseBadge.textContent='▼ 하강 가속'; phaseBadge.classList.add('down'); }
+  else if(Math.abs(velocity) > 0.1){ phaseBadge.textContent='● 정속 운행'; phaseBadge.classList.add('cruise'); }
+  else { phaseBadge.textContent = velocity>=0 ? '▲ 운행 중':'▼ 운행 중'; phaseBadge.classList.add(velocity>=0?'up':'down'); }
+}
+
+/* ── 핵심: 모션 처리 ── */
+function onMotion(e){
+  if(!running) return;
+  const acc = e.accelerationIncludingGravity;
+  if(!acc || acc.x===null) return;
+
+  const now = performance.now();
+  if(lastTime === null){ lastTime = now; return; }
+  let dt = (now - lastTime)/1000;
+  lastTime = now;
+  if(dt <= 0 || dt > 0.2) dt = 0.016; // 이상치 보호
+
+  // 전체 가속도 크기
+  const mag = Math.sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
+
+  // 저역통과 필터로 중력(정적성분) 추출
+  if(!gravityInit){ gravity = mag; gravityInit = true; }
+  const alpha = 0.9;
+  gravity = alpha*gravity + (1-alpha)*mag;
+
+  // 선형(운동) 가속도 = 전체크기 - 중력성분
+  // 엘베는 수직운동이므로 z축 위주지만, 폰 방향 무관하게 크기차로 추정
+  let linAcc = mag - gravity;
+  curAccel = Math.abs(linAcc);
+
+  // 정지 판정 (ZUPT: Zero-velocity UPdaTe)
+  if(curAccel < ZUPT_THRESHOLD){
+    stillCount++;
+    if(stillCount >= ZUPT_COUNT){
+      velocity *= 0.6;            // 드리프트 점진 소거
+      if(Math.abs(velocity) < 0.02){ velocity = 0; moving = false; }
+    }
+  } else {
+    stillCount = 0;
+    if(curAccel > MOVE_THRESHOLD) moving = true;
+  }
+
+  // 적분: 속도 += 가속도 × 시간
+  if(moving){
+    velocity += linAcc * dt;
+    // 비현실적 속도 클램프 (엘베 최대 ~10m/s)
+    velocity = Math.max(-10, Math.min(10, velocity));
+    distance += Math.abs(velocity) * dt;
+  }
+
+  const mmin = Math.abs(velocity)*60;
+  if(mmin > peakSpeed) peakSpeed = mmin;
+
+  graphData.push({v:velocity, a:linAcc});
+  if(graphData.length > 600) graphData.shift();
+}
+
+/* ── 측정 시작/정지 ── */
+function startMeasure(){
+  running = true;
+  velocity = 0; distance = 0; peakSpeed = 0;
+  lastTime = null; gravityInit = false; stillCount = 0; moving = false;
+  graphData = []; curAccel = 0;
+  startBtn.textContent = '측정 종료';
+  startBtn.classList.add('stop');
+  statusDot.classList.add('live');
+  statusText.textContent = '측정중';
+}
+
+function stopMeasure(){
+  running = false;
+  startBtn.textContent = '측정 시작';
+  startBtn.classList.remove('stop');
+  statusDot.classList.remove('live');
+  statusText.textContent = '대기';
+
+  // 기록 저장 (최고속도 의미있을 때만)
+  if(peakSpeed > 3){
+    saveRecord(peakSpeed, distance);
+  }
+  velocity = 0; moving = false;
+  updateUI();
+}
+
+startBtn.addEventListener('click', ()=>{
+  if(running) stopMeasure();
+  else {
+    requestSensorPermission().then(granted=>{
+      if(granted) startMeasure();
+    });
+  }
+});
+
+$('resetBtn').addEventListener('click', ()=>{
+  velocity=0; distance=0; peakSpeed=0; moving=false; graphData=[]; curAccel=0;
+  updateUI(); drawGraph();
+});
+
+/* ── 권한 처리 (iOS 13+ 대응 / 안드로이드는 자동) ── */
+function requestSensorPermission(){
+  return new Promise(resolve=>{
+    if(typeof DeviceMotionEvent !== 'undefined' &&
+       typeof DeviceMotionEvent.requestPermission === 'function'){
+      // iOS
+      DeviceMotionEvent.requestPermission()
+        .then(state=>resolve(state==='granted'))
+        .catch(()=>resolve(false));
+    } else {
+      // Android/Chrome — 권한 불필요, 바로 동작
+      resolve(true);
+    }
+  });
+}
+
+/* ── 기록 저장/표시 (메모리 + 화면) ── */
+let records = [];
+function saveRecord(speed, dist){
+  const now = new Date();
+  records.unshift({
+    time: now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+    date: now.toLocaleDateString('ko-KR',{month:'long',day:'numeric'}),
+    speed: Math.round(speed),
+    dist: dist.toFixed(1)
+  });
+  if(records.length > 20) records.pop();
+  renderRecords();
+}
+
+function renderRecords(){
+  const list = $('recList');
+  if(records.length === 0){
+    list.innerHTML = '<div class="empty">측정을 완료하면 기록이 여기에 저장됩니다</div>';
+    return;
+  }
+  list.innerHTML = records.map(r=>`
+    <div class="rec-item">
+      <div class="rec-left">
+        <div class="rt">${r.date} · ${r.time}</div>
+        <div class="rd">이동거리 ${r.dist} m</div>
+      </div>
+      <div class="rec-right">
+        <div class="rs">${r.speed}</div>
+        <div class="ru">m/min</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+$('clearRec').addEventListener('click', ()=>{
+  records = [];
+  renderRecords();
+});
+
+/* ── 메인 렌더 루프 ── */
+function loop(){
+  updateUI();
+  drawGraph();
+  requestAnimationFrame(loop);
+}
+
+// 센서 리스너 등록
+window.addEventListener('devicemotion', onMotion);
+loop();
+
+// 첫 진입 시 데스크탑 안내
+if(typeof DeviceMotionEvent === 'undefined'){
+  statusText.textContent = '미지원';
+}
+</script>
+</body>
+</html>
